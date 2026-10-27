@@ -78,7 +78,7 @@ function connect() {
   sock.on('connect', () => conn.classList.remove('show'));
   sock.on('disconnect', () => { conn.textContent = 'Reconnecting…'; conn.classList.add('show'); });
   sock.on('connect_error', err => {
-    if (err && err.message === 'unauthorized') { signOut(true); return; }
+    if (err && err.message === 'unauthorized') { if (!S.deactivated) signOut(true); return; }
     conn.textContent = 'Connecting… (free test server can take ~1 min to wake)'; conn.classList.add('show');
   });
   sock.on('state', v => { S.state = v; render(); });
@@ -92,6 +92,7 @@ function connect() {
   sock.on('alertClosed', a => { const r = route(); if (r.name === 'alert' && r.id === a.id) toast('This call is now full (3/3) and closed to new responders.'); });
   sock.on('notify', n => { (n.urgent ? alertSound : softSound)(); toast(n.text, { urgent: n.urgent, link: n.link, ms: 7000 }); sysNotify('Zendo Response (test)', n.text, n.link); });
   sock.on('chatPing', p => { const r = route(); if (!(r.name === 'enc' && r.id === p.id)) { softSound(); toast(`${p.name} posted in ${p.id} chat`, { link: '#/enc/' + p.id }); } });
+  sock.on('deactivated', () => { S.deactivated = true; signOut(); toast('Your test account was deactivated by a chapter lead.', { urgent: true, ms: 8000 }); });
   sock.on('reset', p => { toast(`Demo data was reset by ${p.by}.`); location.hash = '#/home'; });
 }
 function signOut(expired) {
@@ -131,7 +132,7 @@ function render(routeChanged) {
   try { if (fid && fe.selectionStart != null) sel = [fe.selectionStart, fe.selectionEnd]; } catch (e) { }
   const chatEl = $('.chat'); const atBottom = !chatEl || chatEl.scrollHeight - chatEl.scrollTop - chatEl.clientHeight < 60; const chatScroll = chatEl && chatEl.scrollTop;
   const screens = { home, alerts, alert: alertScreen, enc: encounter, er, safe, close: closeout, help, res: resCard, cat: resCat, events, event: eventDetail, chapter, board, post, newpost: newPost, profile, dm, simulate, signin: home };
-  const fn = screens[r.name] || home;
+  const fn = screens[r.name] || XS[r.name] || home;
   let html;
   try { html = fn(r); } catch (e) { console.error(e); html = `<div class="wrap"><p class="err" style="padding-top:30px">Something went wrong showing this screen.</p><button class="btn primary" data-go="#/home">Go home</button></div>`; }
   if (html === null) return;
@@ -148,7 +149,7 @@ function tabbar(active) {
   const t = (id, label, icon) => `<button class="tab ${active === id ? 'act' : ''}" data-go="#/${id}" aria-label="${label}">${ic(icon)}<span>${label}</span>${id === 'alerts' && al ? `<span class="badge">${al}</span>` : ''}</button>`;
   return `<nav class="tabbar">${t('home', 'Home', 'home')}${t('alerts', 'Alerts', 'bell')}${t('help', 'Help', 'life')}${t('events', 'Events', 'cal')}${t('chapter', 'Chapter', 'users')}${t('board', 'Board', 'board')}</nav>`;
 }
-const topbar = () => `<div class="topbar"><div class="wordmark">Zendo Response</div><span class="concept test">Test version</span></div>`;
+const topbar = () => `<div class="topbar"><div class="wordmark">Zendo Response</div><span class="concept test">Test version</span>${S.state && S.state.admin ? `<button class="chip plum" style="margin-left:auto" data-go="#/admin" data-testid="adminchip">${ic('award', 'xs')} ${S.state.admin.isAdmin ? 'Admin' : 'Lead'}</button>` : ''}</div>`;
 const hdr = (title, sub, back) => `<div class="hdr"><button class="back" ${back ? `data-go="${back}"` : 'data-act="back"'} aria-label="Back">${ic('cl')}</button><div style="flex:1;min-width:0"><h2>${title}</h2>${sub ? `<div class="sub">${sub}</div>` : ''}</div></div>`;
 const val = (id, d = '') => esc(S.drafts[id] != null ? S.drafts[id] : d);
 
@@ -185,18 +186,21 @@ function renderSignin() {
     app.innerHTML = '<div class="empty" style="padding-top:90px">Waking the test server… this can take up to a minute on the free plan.</div>';
     fetch('/api/config').then(r => r.json()).then(c => { S.config = c; renderSignin(); }).catch(() => setTimeout(renderSignin, 3000)); return;
   }
-  const c = S.config; const f = S.ui.signin || (S.ui.signin = { role: 't1', chapter: 'bk' });
+  const c = S.config; const f = S.ui.signin || (S.ui.signin = { role: 't1', chapter: 'bk', mode: 'quick' });
+  const tabs = `<div class="opt" style="margin:0 0 12px" role="tablist"><button type="button" class="${f.mode !== 'acct' ? 'sel' : ''}" data-act="siMode" data-v="quick" data-testid="mode-quick">Volunteer quick start</button><button type="button" class="${f.mode === 'acct' ? 'sel' : ''}" data-act="siMode" data-v="acct" data-testid="mode-acct">Admin / Lead sign-in</button></div>`;
+  if (f.mode === 'acct') { renderAcctSignin(tabs); return; }
   app.innerHTML = `<div class="screen notab">${topbar()}<div class="wrap">
   <div class="signin-hero"><div style="font-size:11px;letter-spacing:1px;text-transform:uppercase;opacity:.8;font-weight:700">Volunteer test drill</div>
   <h1 style="font-size:23px;font-weight:600;margin-top:4px">Try Zendo Response</h1>
   <p class="sm" style="opacity:.9;margin-top:6px;line-height:1.45">A working test version for Zendo Project volunteers. Everything here is <b>fake data</b>. Do not enter real guest names or any health information.</p></div>
-  <form id="signin" autocomplete="off">
+  ${tabs}<form id="signin" autocomplete="off">
   <label class="field"><span>Your name (first name or nickname)</span><input class="input" id="si-name" maxlength="40" placeholder="e.g. Maya R." value="${val('si-name')}"></label>
-  <div class="field"><span>Role for this test</span><div class="opt">${Object.entries(c.roles).map(([k, r]) => `<button type="button" class="${f.role === k ? 'sel' : ''}" data-act="siRole" data-v="${k}">${esc(r.label)}</button>`).join('')}</div></div>
+  <div class="field"><span>Role for this test</span><div class="opt">${Object.entries(c.roles).filter(([k]) => k !== 'coord').map(([k, r]) => `<button type="button" class="${f.role === k ? 'sel' : ''}" data-act="siRole" data-v="${k}">${esc(r.label)}</button>`).join('')}</div></div>
   <div class="field"><span>Chapter</span><div class="opt">${c.chapters.map(ch => `<button type="button" class="${f.chapter === ch.id ? 'sel' : ''}" data-act="siChapter" data-v="${ch.id}">${esc(ch.name)}</button>`).join('')}</div></div>
   ${c.codeRequired ? `<label class="field"><span>Test access code (from your coordinator)</span><input class="input" id="si-code" autocapitalize="none" autocorrect="off" placeholder="access code" value="${val('si-code')}"></label>` : ''}
   <div class="err" id="si-err"></div>
   <button class="btn primary" type="submit" style="margin-top:12px" data-testid="signin">Start testing ${ic('cr', 's')}</button>
+  <p class="xs muted" style="margin-top:10px">Coordinators, chapter leads and admins: use <b>Admin / Lead sign-in</b>.</p>
   <p class="disclaimer" style="margin-top:12px;line-height:1.5">No passwords. Your name and role are only stored on the test server and are wiped when it resets. Not for real emergencies. In an emergency call 911 or 988.</p>
   </form></div></div>`;
   $('#signin').onsubmit = async ev => {
@@ -208,6 +212,28 @@ function renderSignin() {
       if (!r.ok) { $('#si-err').textContent = j.error || 'Could not sign in'; btn.disabled = false; return; }
       S.token = j.token; localStorage.setItem('zr_token', j.token); S.drafts = {}; location.hash = '#/home'; connect(); render();
     } catch (e) { $('#si-err').textContent = 'Network problem. The test server may be waking up, try again in a few seconds.'; btn.disabled = false; }
+  };
+}
+
+function renderAcctSignin(tabs) {
+  app.innerHTML = `<div class="screen notab">${topbar()}<div class="wrap">
+  <div class="signin-hero"><div style="font-size:11px;letter-spacing:1px;text-transform:uppercase;opacity:.8;font-weight:700">Leadership & test accounts</div>
+  <h1 style="font-size:23px;font-weight:600;margin-top:4px">Sign in to your account</h1>
+  <p class="sm" style="opacity:.9;margin-top:6px;line-height:1.45">For admins, chapter leads and seeded test volunteers. Demo passwords only. This is a <b>test version</b> with fictional people and events.</p></div>
+  ${tabs}<form id="acctform" autocomplete="off">
+  <label class="field"><span>Username</span><input class="input" id="ac-user" autocapitalize="none" autocorrect="off" placeholder="e.g. lead" value="${val('ac-user')}"></label>
+  <label class="field"><span>Password</span><input class="input" id="ac-pass" type="password" placeholder="password"></label>
+  <div class="err" id="ac-err" data-testid="ac-err"></div>
+  <button class="btn primary" type="submit" style="margin-top:12px" data-testid="acct-signin">Sign in ${ic('cr', 's')}</button>
+  <p class="disclaimer" style="margin-top:12px;line-height:1.5">Not for real emergencies. In an emergency call 911 or 988.</p></form></div></div>`;
+  $('#acctform').onsubmit = async ev => {
+    ev.preventDefault(); unlockAudio();
+    const btn = ev.target.querySelector('button[type=submit]'); btn.disabled = true;
+    try {
+      const r = await fetch('/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: $('#ac-user').value, password: $('#ac-pass').value }) }); const j = await r.json();
+      if (!r.ok) { $('#ac-err').textContent = j.error || 'Could not sign in'; btn.disabled = false; return; }
+      S.deactivated = false; S.token = j.token; localStorage.setItem('zr_token', j.token); S.drafts = {}; location.hash = j.access ? '#/admin' : '#/home'; connect(); render();
+    } catch (e) { $('#ac-err').textContent = 'Network problem. The test server may be waking up, try again in a few seconds.'; btn.disabled = false; }
   };
 }
 
@@ -227,6 +253,7 @@ function home() {
   return `<div class="screen">${topbar()}<div class="wrap">
   <div class="row between" style="margin:0 0 10px"><div><div class="muted sm">${day} ${part} · ${esc(ch.borough)}</div><h1 style="font-size:23px;font-weight:600;letter-spacing:-.3px">Hi, ${esc(m.name.split(' ')[0])} <span style="color:var(--mauve)">✦</span></h1></div>
   <button data-go="#/profile" style="border:0;background:none" aria-label="Profile">${av(m.name, 'lg', undefined, 'linear-gradient(135deg,#AB6B9E,#65206b)')}</button></div>
+  ${annCard()}${briefHomeCard()}
   ${mine ? `<button class="card row" data-go="#/enc/${mine.id}" style="width:100%;margin-bottom:10px;background:var(--coral-l);border-color:#f3cfc6;text-align:left"><span class="live">LIVE</span><div style="flex:1"><div class="b">You're on ${esc(mine.id)}</div><div class="xs muted">${esc(mine.place.name)} · ${mine.responders.length}/${max} responders</div></div>${ic('cr', 's')}</button>` : ''}
   ${oa.length && vol ? `<button class="card row" data-go="#/alert/${oa[0].id}" style="width:100%;margin-bottom:10px;background:#2a0f2e;color:#fff;border:0;text-align:left">${ic('bell')}<div style="flex:1"><div class="b">Open alert: ${esc(oa[0].type)}</div><div class="xs" style="opacity:.8">${esc(oa[0].place.name)} · ${oa[0].responders.length}/${max} responders</div></div>${ic('cr', 's')}</button>` : ''}
   <div class="card" style="background:linear-gradient(135deg,#65206b,#8a3b8c);color:#fff;border:none;padding:16px">
@@ -252,6 +279,15 @@ function home() {
   </div>${tabbar('home')}</div>`;
 }
 
+function annCard() {
+  const a = (S.state.announcements || [])[0]; if (!a || Date.now() - a.at > 3 * 864e5) return '';
+  return `<div class="card" style="margin-bottom:10px;${a.urgent ? 'background:var(--coral-l);border-color:#f3cfc6' : 'background:var(--mauve-l);border:0'}" data-testid="announcement"><div class="xs b muted">📣 ANNOUNCEMENT · ${esc(a.by)} · ${ago(a.at)}</div><div class="sm" style="margin-top:4px;line-height:1.4">${esc(a.text)}</div></div>`;
+}
+function briefHomeCard() {
+  const ev = S.state.events.find(e => e.briefing && Object.values(e.briefing.parts).some(p => p.myStatus && p.myStatus !== 'none' && p.myStatus !== 'ack') && e.signups.some(s => s.userId === me().id));
+  if (!ev) return '';
+  return `<button class="card row" data-go="#/event/${ev.id}" style="width:100%;margin-bottom:10px;border:2px solid var(--plum);text-align:left" data-testid="home-briefing">🎟️<div style="flex:1"><div class="b">Entry credentials for ${esc(ev.title)}</div><div class="xs muted">From your event lead team · tap to view & acknowledge</div></div>${ic('cr', 's')}</button>`;
+}
 function encRow(e, extra = '') {
   const m = me(); const max = S.state.maxResponders;
   const href = e.status === 'active' ? ((e.mine || isOversight(m.role)) ? '#/enc/' : '#/alert/') : '#/close/';
@@ -526,6 +562,7 @@ function eventDetail(r) {
   return `<div class="screen notab">${hdr(esc(ev.title), esc(ev.day) + ' · ' + esc(ev.time), '#/events')}<div class="wrap">
   <div class="card" style="background:${ev.grad};color:#fff;border:0"><div class="pop" style="font-size:20px;font-weight:600">${esc(ev.title)}</div><div class="sm" style="opacity:.9;margin-top:3px">${esc(ev.place)} · ${esc(ev.kind)} · fictional event</div><div class="row" style="flex-wrap:wrap;gap:6px;margin-top:9px">${ev.tags.map(t => `<span class="chip" style="background:rgba(255,255,255,.18);color:#fff">${esc(t)}</span>`).join('')}</div></div>
   <div class="card" style="margin-top:10px;padding:4px 14px 6px">${ev.shifts.map(sh => shiftRow(ev, sh) + `<div class="xs muted" style="padding:0 0 8px">${ev.signups.filter(s => s.shiftId === sh.id).map(s => esc(s.name)).join(', ') || 'No app sign-ups yet'}${sh.seeded ? ` · +${sh.seeded} sample (fake)` : ''}</div>`).join('')}</div>
+  ${briefingCard(ev)}
   <p class="disclaimer" style="margin-top:10px">Tap again to cancel your sign-up. Sign-ups are saved on the test server until it resets.</p></div></div>`;
 }
 
@@ -590,14 +627,15 @@ function profile() {
   <div class="row" style="gap:10px;margin-top:10px"><div class="card" style="flex:1;padding:12px;text-align:center"><div class="pop" style="font-size:22px;font-weight:600" data-testid="hours">${m.hours}</div><div class="xs muted">hours</div></div><div class="card" style="flex:1;padding:12px;text-align:center"><div class="pop" style="font-size:22px;font-weight:600" data-testid="enccount">${m.encounters}</div><div class="xs muted">encounters</div></div><div class="card" style="flex:1;padding:12px;text-align:center"><div class="pop" style="font-size:22px;font-weight:600">${m.eventsCount}</div><div class="xs muted">shifts</div></div></div>
   <div class="sec">Weekly availability</div><div class="card"><div class="week">${m.availability.map((v, i) => `<button class="${['', 'maybe', 'on'][v]}" data-act="avail" data-i="${i}" aria-label="${days[i]} ${lvl[v]}"><b>${days[i]}</b><small>${lvl[v]}</small></button>`).join('')}</div><div class="xs muted" style="margin-top:6px">Tap a day to cycle Off → Maybe → Free</div></div>
   <div class="sec">Test settings</div><div class="card list" style="padding:2px 14px">
-   <button ${LI} data-act="switchRole">${ic('swap', 's')}<div style="flex:1"><div class="b sm">Switch role</div><div class="xs muted">${esc(roleLabel(m.role))}</div></div>${ic('cr', 's')}</button>
-   <button ${LI} data-act="switchChapter">${ic('pin', 's')}<div style="flex:1"><div class="b sm">Switch chapter</div><div class="xs muted">${esc(S.state.chapter.name)}</div></div>${ic('cr', 's')}</button>
+   ${m.access ? `<button ${LI} data-go="#/admin">${ic('award', 's')}<div style="flex:1"><div class="b sm">${m.isAdmin ? 'Admin panel' : 'Lead panel'}</div><div class="xs muted">Signed in as ${esc(m.username)} · ${m.isAdmin ? 'Admin' : 'Chapter lead'}</div></div>${ic('cr', 's')}</button>` : ''}
+   ${m.access ? '' : `<button ${LI} data-act="switchRole">${ic('swap', 's')}<div style="flex:1"><div class="b sm">Switch role</div><div class="xs muted">${esc(roleLabel(m.role))}</div></div>${ic('cr', 's')}</button>`}
+   ${m.access && !m.isAdmin ? '' : `<button ${LI} data-act="switchChapter">${ic('pin', 's')}<div style="flex:1"><div class="b sm">Switch chapter</div><div class="xs muted">${esc(S.state.chapter.name)}</div></div>${ic('cr', 's')}</button>`}
    <button ${LI} data-act="notifs">${ic('bell', 's')}<div style="flex:1"><div class="b sm">Phone notifications</div><div class="xs muted">${perm === 'granted' ? 'On (while the app is open or in the background)' : perm === 'denied' ? 'Blocked in browser settings' : perm === 'unsupported' ? 'Install to Home Screen first (iPhone)' : 'Tap to allow'}</div></div>${ic('cr', 's')}</button>
    <button ${LI} data-act="testSound">${ic('volume', 's')}<div style="flex:1"><div class="b sm">Test alert sound & vibration</div><div class="xs muted">Tap once so your phone allows sound</div></div>${ic('cr', 's')}</button>
    ${standalone ? '' : `<button ${LI} data-act="install">${ic('plus', 's')}<div style="flex:1"><div class="b sm">Install on this phone</div><div class="xs muted">Add Zendo Response to your Home Screen</div></div>${ic('cr', 's')}</button>`}
    <button ${LI} data-act="signout">${ic('logout', 's')}<div style="flex:1"><div class="b sm">Sign out</div></div></button>
   </div>
-  ${m.role === 'coord' ? `<div class="sec">Coordinator admin</div><div class="card"><p class="sm" style="line-height:1.45">Clears every encounter, chat, sign-up, board post and DM, then reloads the fake sample data. Signed-in testers stay signed in.</p><button class="btn red" style="margin-top:10px" data-act="reset" data-testid="reset">${ic('refresh', 's')} Reset demo data</button></div>` : ''}
+  ${S.state.admin ? `<div class="sec">Leadership</div><div class="card"><p class="sm" style="line-height:1.45">Clears every encounter, chat, sign-up, board post and DM, then reloads the fake sample data. Signed-in testers stay signed in.</p><button class="btn red" style="margin-top:10px" data-act="reset" data-testid="reset">${ic('refresh', 's')} Reset demo data</button></div>` : ''}
   <p class="disclaimer" style="margin-top:12px">TEST VERSION · fake data only · data is wiped when the test server restarts</p>
   </div></div>`;
 }
@@ -617,7 +655,7 @@ function simulate() {
 }
 
 /* ========== ACTIONS ========== */
-const ROLE_ORDER = ['t1', 't2', 'coord', 'lcsw', 'md', 'liaison'];
+const ROLE_ORDER = ['t1', 't2', 'lcsw', 'md', 'liaison'];
 async function doAccept(id) {
   const r = await emit('accept', { id });
   if (r.error) { toast(r.error, { urgent: !!r.full }); render(); return; }
@@ -629,6 +667,7 @@ const A = {
   closeModal,
   back() { if (history.length > 1) history.back(); else location.hash = '#/home'; },
   siRole(el) { S.ui.signin.role = el.dataset.v; saveSigninDraft(); renderSignin(); },
+  siMode(el) { S.ui.signin.mode = el.dataset.v; saveSigninDraft(); renderSignin(); },
   siChapter(el) { S.ui.signin.chapter = el.dataset.v; saveSigninDraft(); renderSignin(); },
   async duty() {
     const on = !me().onDuty; const r = await emit('duty', { on });
@@ -708,13 +747,13 @@ const A = {
     modal(`<h3 style="font-size:17px">Install on your phone</h3><div class="sm" style="margin:10px 0 14px;line-height:1.55">${ios ? '<b>iPhone (Safari):</b><br>1. Tap the Share button (square with an arrow).<br>2. Scroll and tap <b>Add to Home Screen</b>.<br>3. Tap <b>Add</b>, then open Zendo Response from your Home Screen.' : '<b>Android (Chrome):</b><br>1. Tap the ⋮ menu (top right).<br>2. Tap <b>Install app</b> or <b>Add to Home screen</b>.<br>3. Open Zendo Response from your home screen.'}</div><button class="btn primary" data-act="closeModal">Got it</button>`);
   },
   signout() { confirmBox('Sign out?', 'Your test account stays on the server until it resets, but you will need to sign in again as a new tester.', 'Sign out', () => signOut()); },
-  reset() { confirmBox('Reset all demo data?', 'This clears every test encounter, chat, sign-up, board post and DM for <b>everyone</b>, then reloads the fake sample data.', 'Reset demo data', async () => { const r = await emit('reset'); if (r.error) toast(r.error); }, true); }
+  reset() { confirmBox('Reset all demo data?', 'This clears every test encounter, chat, sign-up, briefing, board post and DM for <b>everyone</b>, then reloads the fake sample data.', 'Reset demo data', async () => { const r = await api('POST', '/api/admin/reset'); if (r.error) toast(r.error); }, true); }
 };
 const CHANGE = {
   hosp(el) { S.ui.close[el.dataset.id].hospitalId = el.value; },
   simPlace(el) { S.ui.sim.place = Number(el.value); }
 };
-function saveSigninDraft() { ['si-name', 'si-code'].forEach(id => { const el = document.getElementById(id); if (el) S.drafts[id] = el.value; }); }
+function saveSigninDraft() { ['si-name', 'si-code', 'ac-user'].forEach(id => { const el = document.getElementById(id); if (el) S.drafts[id] = el.value; }); }
 function askNotif(explicit) {
   if (!('Notification' in window)) { if (explicit) toast('Notifications need the app installed to your Home Screen (iPhone, iOS 16.4+).'); return; }
   if (Notification.permission === 'default') Notification.requestPermission().then(p => { if (explicit || p === 'granted') toast(p === 'granted' ? 'Notifications on' : 'Notifications not allowed'); render(); });
@@ -724,7 +763,8 @@ function askNotif(explicit) {
 /* ========== LISTENERS ========== */
 document.addEventListener('click', ev => {
   const el = ev.target.closest('[data-act],[data-go]'); if (!el || el.disabled) return;
-  if (el.dataset.act && A[el.dataset.act]) { ev.preventDefault(); A[el.dataset.act](el); return; }
+  const fnA = el.dataset.act && (A[el.dataset.act] || XA[el.dataset.act]);
+  if (fnA) { ev.preventDefault(); fnA(el); return; }
   if (el.dataset.go) { ev.preventDefault(); if (location.hash === el.dataset.go) render(true); else location.hash = el.dataset.go; }
 });
 document.addEventListener('change', ev => { const el = ev.target.closest('[data-act-change]'); if (el && CHANGE[el.dataset.actChange]) CHANGE[el.dataset.actChange](el); });
@@ -752,6 +792,8 @@ window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); deferr
 /* ========== BOOT ========== */
 if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => { }));
 if (S.token) connect();
+// expose helpers used by admin.js (leadership screens)
+Object.assign(window, { S, $, LI, ago, tm, av, closeModal, confirmBox, esc, hdr, ic, modal, render, roleLabel, toast, val });
 if (!location.hash) history.replaceState(null, '', S.token ? '#/home' : '#/signin');
 render();
 })();

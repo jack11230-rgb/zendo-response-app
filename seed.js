@@ -113,4 +113,55 @@ function history(now) {
   ];
 }
 
-module.exports = { CHAPTERS, ALERT_TYPES, SAMPLE_MEMBERS, events, board, history };
+
+// ---------- seeded TEST accounts (fictional people, demo passwords) ----------
+// access: 'admin' = program-wide admin, 'lead' = chapter lead / coordinator, null = regular volunteer.
+const PW = {
+  admin: process.env.DEMO_ADMIN_PASSWORD || 'zendo-admin',
+  lead: process.env.DEMO_LEAD_PASSWORD || 'zendo-lead',
+  vol: process.env.DEMO_VOL_PASSWORD || 'zendo-vol'
+};
+const ACCOUNTS = [
+  { id: 'acct-admin', username: 'admin', pw: 'admin', name: 'Avery Quinn (Admin)', role: 'coord', access: 'admin', chapter: 'bk' },
+  { id: 'acct-lead-bk', username: 'lead', pw: 'lead', name: 'Jordan Ellis', role: 'coord', access: 'lead', chapter: 'bk' },
+  { id: 'acct-lead-les', username: 'lead-les', pw: 'lead', name: 'Rosa Delgado', role: 'coord', access: 'lead', chapter: 'les' },
+  { id: 'acct-maya', username: 'maya', pw: 'vol', name: 'Maya Rivera', role: 't2', access: null, chapter: 'bk' },
+  { id: 'acct-andre', username: 'andre', pw: 'vol', name: 'Andre Silva', role: 't2', access: null, chapter: 'bk' },
+  { id: 'acct-lena', username: 'lena', pw: 'vol', name: 'Lena Feldman', role: 't1', access: null, chapter: 'bk' },
+  { id: 'acct-theo', username: 'theo', pw: 'vol', name: 'Theo Banks', role: 't1', access: null, chapter: 'bk' },
+  { id: 'acct-kwame', username: 'kwame', pw: 'vol', name: 'Kwame Owusu', role: 't1', access: null, chapter: 'bk' },
+  { id: 'acct-ben', username: 'ben', pw: 'vol', name: 'Ben Ortega', role: 't2', access: null, chapter: 'les' },
+  { id: 'acct-mei', username: 'mei', pw: 'vol', name: 'Mei Chen', role: 't1', access: null, chapter: 'les' }
+];
+
+// lead teams, signups and a sample briefing for the seeded events
+function eventSeeds(now) {
+  const h = 3600e3;
+  return {
+    ev1: {
+      leadTeam: ['acct-maya'],
+      signups: [['acct-maya', 's2'], ['acct-andre', 's1'], ['acct-lena', 's1'], ['acct-theo', 's1']],
+      briefing: {
+        credentials: {
+          fields: { type: 'Purple "ZENDO CARE – STAFF" wristband (TEST)', pickup: 'Volunteer check-in table, north lobby (fictional venue)', pickupTime: 'Fri Oct 30 · 9:15 PM', gate: 'Gate C · staff entrance on Ingraham St (fictional)', contact: 'Maya Rivera (event lead) · in-app chat', code: 'ZEN-TEST-4821', notes: 'Show this screen + photo ID at Gate C. Wristband must stay on all night. Fake test code, not a real ticket.' },
+          version: 1, sentAt: now - 20 * h, by: 'Jordan Ellis', byId: 'acct-lead-bk', recipients: 'all'
+        },
+        instructions: {
+          fields: { text: 'Sanctuary tent is behind the main stage, left side. Bring a water bottle and a warm layer. Phones on vibrate. Shift lead briefing at 9:45 PM sharp at the tent. No photos of guests. (Sample instructions, test data.)' },
+          version: 1, sentAt: now - 20 * h, by: 'Jordan Ellis', byId: 'acct-lead-bk', recipients: 'all'
+        },
+        receipts: {
+          'acct-lena': { credentials: { readV: 1, readAt: now - 19 * h, ackV: 1, ackAt: now - 19 * h }, instructions: { readV: 1, readAt: now - 19 * h, ackV: 1, ackAt: now - 19 * h } },
+          'acct-andre': { credentials: { readV: 1, readAt: now - 5 * h }, instructions: { readV: 1, readAt: now - 5 * h } }
+        },
+        history: [
+          { at: now - 20 * h, by: 'Jordan Ellis', part: 'credentials', kind: 'sent', version: 1, to: 'all signed-up volunteers', count: 4 },
+          { at: now - 20 * h, by: 'Jordan Ellis', part: 'instructions', kind: 'sent', version: 1, to: 'all signed-up volunteers', count: 4 }
+        ]
+      }
+    },
+    ev5: { leadTeam: ['acct-ben'], signups: [['acct-ben', 's2'], ['acct-mei', 's1']] }
+  };
+}
+
+module.exports = { CHAPTERS, ALERT_TYPES, SAMPLE_MEMBERS, events, board, history, ACCOUNTS, PW, eventSeeds };

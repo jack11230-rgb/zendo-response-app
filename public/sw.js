@@ -1,6 +1,6 @@
 // Zendo Response TEST service worker: offline shell + notifications.
-const CACHE = 'zr-test-v1';
-const SHELL = ['/', '/app.css', '/app.js', '/icons.js', '/resources.js', '/manifest.webmanifest', '/icons/icon-192.png',
+const CACHE = 'zr-test-v2';
+const SHELL = ['/', '/app.css', '/app.js', '/admin.js', '/icons.js', '/resources.js', '/manifest.webmanifest', '/icons/icon-192.png',
   '/vendor/leaflet/leaflet.js', '/vendor/leaflet/leaflet.css', '/socket.io/socket.io.min.js',
   '/fonts/inter/files/inter-latin-400-normal.woff2', '/fonts/inter/files/inter-latin-600-normal.woff2', '/fonts/inter/files/inter-latin-700-normal.woff2',
   '/fonts/poppins/files/poppins-latin-600-normal.woff2'];
